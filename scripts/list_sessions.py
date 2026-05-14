@@ -40,7 +40,7 @@ for uuid in sorted(all_uuids):
     elif cc_title != '—' and cc_name != '—' and cc_title != cc_name: status = 'MISMATCH'
     elif cc_title == '(unnamed)' and cc_name == '(unnamed)': status = 'both unnamed'
     else: status = 'partial'
-    print(f'| {uuid[:8]}... | {cc_title} | {cc_name} | {status} |')
+    print(f'| {uuid} | {cc_title} | {cc_name} | {status} |')
 
 if unlinked_sessions:
     print('\ncc-connect only (no Claude Code session):')
@@ -48,4 +48,4 @@ if unlinked_sessions:
 
 for uuid in cc_sessions:
     if uuid not in cc_connect_sessions:
-        print(f'\nClaude Code only: {uuid[:8]}... = {cc_sessions[uuid]}')
+        print(f'\nClaude Code only: {uuid} = {cc_sessions[uuid]}')

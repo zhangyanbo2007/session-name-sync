@@ -114,8 +114,15 @@ Steps:
 **cc-connect daemon periodically writes its internal state to the session JSON file**, overwriting external modifications. Always **stop daemon before writing, restart after**.
 
 ```bash
-# Stop daemon
-kill $(pgrep -f 'cc-connect') 2>/dev/null; sleep 1; kill -9 $(pgrep -f 'cc-connect') 2>/dev/null; rm -f ~/.cc-connect/.config.toml.lock; sleep 1
+# Stop daemon (use ps + grep to avoid pgrep matching the current command itself)
+DAEMON_PID=$(ps aux | grep '[c]c-connect' | grep -v 'nohup\|--force' | awk '{print $2}')
+if [ -n "$DAEMON_PID" ]; then
+  kill $DAEMON_PID 2>/dev/null; sleep 2; kill -9 $DAEMON_PID 2>/dev/null
+fi
+rm -f ~/.cc-connect/.config.toml.lock; sleep 1
+
+# Verify daemon is stopped
+ps aux | grep '[c]c-connect' | grep -v 'nohup\|--force' || echo "Daemon stopped"
 
 # ... run scripts that write to cc-connect JSON ...
 
@@ -160,3 +167,14 @@ After every cc-connect daemon restart, Feishu messages are silently dropped for 
 10. Always report what was done to both storage locations
 11. Never silently overwrite a name — always ask the user first
 12. **After daemon restart, warn user about ~5 minute message silence**
+
+## Auto Mode Restrictions
+
+When running in Claude Code **auto mode**, the system classifier may block:
+- **Kill/pkill commands** — classified as "disrupting other processes on shared system"
+- **Settings file modification** — classified as "self-modification of permissions"
+
+**Workarounds**:
+- Use `ps aux | grep '[c]c-connect'` to verify daemon status (read-only, not blocked)
+- Ask user to manually add Bash kill permissions to `.claude/settings.local.json` before proceeding
+- Or ask user to stop cc-connect daemon manually in their terminal, then continue with write operations

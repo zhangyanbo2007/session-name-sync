@@ -6,6 +6,7 @@ from resolve_paths import resolve_paths
 cc_project_dir, cc_file = resolve_paths()
 
 cc_sessions = {}
+cc_sessions_all = {}  # includes unnamed sessions for mismatch detection
 for f in glob.glob(os.path.join(cc_project_dir, '*.jsonl')):
     sid = os.path.basename(f).replace('.jsonl', '')
     title = None; msg_count = 0
@@ -17,6 +18,7 @@ for f in glob.glob(os.path.join(cc_project_dir, '*.jsonl')):
                 elif d.get('type') == 'ai-title' and d.get('sessionId') == sid and title is None: title = d.get('aiTitle')
                 elif d.get('type') in ('human', 'user', 'assistant'): msg_count += 1
             except: pass
+    cc_sessions_all[sid] = {'title': title or '', 'msg_count': msg_count}
     if title and title != 'None': cc_sessions[sid] = {'title': title, 'msg_count': msg_count}
 
 with open(cc_file) as f: data = json.load(f)
@@ -25,18 +27,24 @@ existing_aids = {sess.get('agent_session_id','') for sess in data['sessions'].va
 registered = []; restored = []; mismatches = []; history_drifts = []
 
 for sid, info in cc_sessions.items():
-    if sid not in existing_aids: registered.append((sid[:12], info['title'], info['msg_count']))
+    if sid not in existing_aids: registered.append((sid, info['title'], info['msg_count']))
 
 for key, sess in data['sessions'].items():
     aid = sess.get('agent_session_id', '')
     if not aid: continue
     info = cc_sessions.get(aid)
-    if not info: continue
+    info_all = cc_sessions_all.get(aid)
     current_name = sess.get('name', '')
-    if not current_name: restored.append((key, aid[:12], info['title']))
-    elif current_name != info['title']: mismatches.append((key, aid[:12], current_name, info['title']))
+    # Detect mismatch: cc-connect has name but Claude Code has none, or names differ
+    jsonl_title = info_all['title'] if info_all else ''
+    if not current_name and jsonl_title:
+        restored.append((key, aid, jsonl_title))
+    elif current_name and not jsonl_title:
+        mismatches.append((key, aid, current_name, '(unnamed)', 'cc-only'))
+    elif current_name and jsonl_title and current_name != jsonl_title:
+        mismatches.append((key, aid, current_name, jsonl_title, 'both-named'))
     current_hlen = len(sess.get('history') or []) if sess.get('history') else 0
-    if current_hlen != info['msg_count']: history_drifts.append((key, current_name or info['title'], current_hlen, info['msg_count']))
+    if info and current_hlen != info['msg_count']: history_drifts.append((key, current_name or info['title'], current_hlen, info['msg_count']))
 
 print(f"=== Register Summary ===")
 print(f"New sessions to register: {len(registered)}")
@@ -44,7 +52,8 @@ for sid, title, count in registered: print(f"  {sid}... -> \"{title}\" ({count} 
 print(f"Cleared names to restore: {len(restored)}")
 for key, aid, title in restored: print(f"  {key}: {aid}... -> \"{title}\"")
 print(f"Name mismatches: {len(mismatches)}")
-for key, aid, cc_name, jsonl_name in mismatches: print(f"  {key}: cc=\"{cc_name}\" vs jsonl=\"{jsonl_name}\"")
+for key, aid, cc_name, jsonl_name, kind in mismatches:
+    print(f"  {key}: {aid}... cc=\"{cc_name}\" vs jsonl=\"{jsonl_name}\" ({kind})")
 print(f"History count drifts: {len(history_drifts)}")
 for key, name, old, new in history_drifts: print(f"  {key} \"{name}\": {old} -> {new}")
 
